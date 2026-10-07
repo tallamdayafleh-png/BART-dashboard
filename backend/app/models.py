@@ -1,4 +1,5 @@
 import uuid
+from enum import Enum
 from datetime import UTC, datetime
 
 from pydantic import EmailStr
@@ -124,3 +125,78 @@ class TokenPayload(SQLModel):
 class NewPassword(SQLModel):
     token: str
     new_password: str = Field(min_length=8, max_length=128)
+
+class DetectionStatus(str, Enum):
+    pending = "pending"
+    accepted = "accepted"
+    rejected = "rejected"
+
+
+# ---------- Table ----------
+
+class Detection(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+
+    # Image: store only the path/key; the file lives on disk or in object storage
+    image_path: str = Field(max_length=512)
+
+    # Bounding box, normalized 0-1 relative to image width/height
+    bbox_x: float = Field(ge=0, le=1)
+    bbox_y: float = Field(ge=0, le=1)
+    bbox_w: float = Field(ge=0, le=1)
+    bbox_h: float = Field(ge=0, le=1)
+
+    # What the model found
+    defect_type: str = Field(max_length=64, index=True)   # e.g. "crack", "squat", "loose_fastener"
+    confidence: float = Field(ge=0, le=1, index=True)
+    model_name: str = Field(max_length=128)
+    model_version: str = Field(max_length=64)
+
+    # Where it was found (GPS and/or BART track reference)
+    latitude: float | None = None
+    longitude: float | None = None
+    track_segment: str | None = Field(default=None, max_length=64)   # e.g. "A-line, Track 1"
+    milepost: float | None = None
+
+    captured_at: datetime = Field(index=True)        # when the camera took the image
+    created_at: datetime = Field(default_factory=get_datetime_utc)
+
+    # Engineer review
+    status: DetectionStatus = Field(default=DetectionStatus.pending, index=True)
+    reviewed_by_id: uuid.UUID | None = Field(default=None, foreign_key="user.id")
+    reviewed_at: datetime | None = None
+    review_note: str | None = Field(default=None, max_length=1000)
+
+
+# ---------- API schemas ----------
+
+class DetectionPublic(SQLModel):
+    id: uuid.UUID
+    image_url: str            # filled in by the route, points at /detections/{id}/image
+    bbox_x: float
+    bbox_y: float
+    bbox_w: float
+    bbox_h: float
+    defect_type: str
+    confidence: float
+    model_name: str
+    model_version: str
+    latitude: float | None
+    longitude: float | None
+    track_segment: str | None
+    milepost: float | None
+    captured_at: datetime
+    status: DetectionStatus
+    reviewed_by_id: uuid.UUID | None
+    reviewed_at: datetime | None
+    review_note: str | None
+
+
+class DetectionsPublic(SQLModel):
+    data: list[DetectionPublic]
+    count: int
+
+
+class ReviewDecision(SQLModel):
+    decision: DetectionStatus            # must be "accepted" or "rejected"
+    note: str | None = Field(default=None, max_length=1000)
