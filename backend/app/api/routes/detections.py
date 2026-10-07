@@ -5,7 +5,8 @@ Save as backend/app/api/routes/detections.py, then in backend/app/api/main.py:
     from app.api.routes import detections
     api_router.include_router(detections.router)
 
-Set IMAGE_ROOT (env var) to the folder where the model writes its images.
+Images are read from backend/data/detections by default. Set the IMAGE_ROOT
+environment variable to use a different folder (e.g. where the model writes its images).
 """
 
 import os
@@ -28,7 +29,9 @@ from app.models import (
 
 router = APIRouter(prefix="/detections", tags=["detections"])
 
-IMAGE_ROOT = Path(os.getenv("IMAGE_ROOT", "/data/detections")).resolve()
+# Default: backend/data/detections (this file is backend/app/api/routes/detections.py)
+DEFAULT_IMAGE_ROOT = Path(__file__).resolve().parents[3] / "data" / "detections"
+IMAGE_ROOT = Path(os.getenv("IMAGE_ROOT", DEFAULT_IMAGE_ROOT)).resolve()
 
 
 def to_public(d: Detection) -> DetectionPublic:
